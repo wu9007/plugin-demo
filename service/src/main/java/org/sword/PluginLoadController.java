@@ -1,8 +1,5 @@
 package org.sword;
 
-import org.springframework.beans.factory.support.BeanDefinitionBuilder;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
-import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -12,6 +9,7 @@ import javax.annotation.Resource;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.MalformedURLException;
+import java.net.URLClassLoader;
 import java.util.List;
 
 /**
@@ -23,21 +21,32 @@ import java.util.List;
 public class PluginLoadController {
 
     @Resource
-    private GenericApplicationContext applicationContext;
-    @Resource
     private RequestMappingHandlerMapping requestMappingHandlerMapping;
+    @Resource
+    private PluginRegistrar pluginRegistrar;
 
     @GetMapping
     public boolean load() throws MalformedURLException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
-        List<IPluginController> iPluginControllers = PluginLoader.loadControllerPlugins();
-        DefaultListableBeanFactory defaultListableBeanFactory = (DefaultListableBeanFactory) applicationContext.getAutowireCapableBeanFactory();
+        //必须使用同一个类加载器
+        URLClassLoader classLoader = PluginLoader.getClassLoader();
+        if (classLoader == null) {
+            return false;
+        }
+
+        //加载service插件并注册为bean
+        List<IPluginService> iPluginServices = PluginLoader.loadServicePlugins(classLoader);
+        for (IPluginService iPluginService : iPluginServices) {
+            Class<?> interfaceType = (Class<?>) iPluginService.getClass().getGenericInterfaces()[0];
+            pluginRegistrar.registerPlugin("userService", iPluginService, interfaceType);
+        }
+
+        //加载controller插件并注册为bean
+        List<IPluginController> iPluginControllers = PluginLoader.loadControllerPlugins(classLoader);
         for (IPluginController iPluginController : iPluginControllers) {
-            BeanDefinitionBuilder beanDefinitionBuilder = BeanDefinitionBuilder.genericBeanDefinition(iPluginController.getClass());
-            defaultListableBeanFactory.registerBeanDefinition("myc", beanDefinitionBuilder.getBeanDefinition());
+            pluginRegistrar.registerPlugin("userController", iPluginController, iPluginController.getClass());
             Method method = requestMappingHandlerMapping.getClass().getSuperclass().getSuperclass().getDeclaredMethod("detectHandlerMethods", Object.class);
             method.setAccessible(true);
-            method.invoke(requestMappingHandlerMapping, "myc");
-            System.out.println("加载成功：" + iPluginController.getClass());
+            method.invoke(requestMappingHandlerMapping, "userController");
         }
         return true;
     }
