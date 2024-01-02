@@ -1,5 +1,6 @@
 package org.sword;
 
+import org.apache.ibatis.session.SqlSession;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -8,7 +9,6 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import javax.annotation.Resource;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.net.MalformedURLException;
 import java.net.URLClassLoader;
 import java.util.List;
 
@@ -24,13 +24,21 @@ public class PluginLoadController {
     private RequestMappingHandlerMapping requestMappingHandlerMapping;
     @Resource
     private PluginRegistrar pluginRegistrar;
+    @Resource
+    private SqlSession sqlSession;
 
     @GetMapping
-    public boolean load() throws MalformedURLException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+    public boolean load() throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
         //必须使用同一个类加载器
         URLClassLoader classLoader = PluginLoader.getClassLoader();
         if (classLoader == null) {
             return false;
+        }
+
+        //加载mapper插件并注册为bean
+        List<IPluginMapper> iPluginMappers = PluginLoader.loadMapperPlugins(classLoader, sqlSession);
+        for (IPluginMapper iPluginMapper : iPluginMappers) {
+            pluginRegistrar.registerPlugin("userMapper", iPluginMapper, iPluginMapper.getClass());
         }
 
         //加载service插件并注册为bean

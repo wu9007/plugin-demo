@@ -1,13 +1,13 @@
 package org.sword;
 
+import org.apache.ibatis.binding.MapperProxyFactory;
+import org.apache.ibatis.session.SqlSession;
+
 import java.io.File;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.ServiceLoader;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -20,6 +20,30 @@ import java.util.stream.Collectors;
 public class PluginLoader {
 
     private static final String PLUGIN_PATH = "plugins";
+
+    /**
+     * 加载mapper插件
+     *
+     * @param urlClassLoader 类加载器
+     * @return 插件集合
+     */
+    public static List<IPluginMapper> loadMapperPlugins(URLClassLoader urlClassLoader, SqlSession  sqlSession) {
+        ServiceLoader<IPluginMapper> mapperLoader = ServiceLoader.load(IPluginMapper.class, urlClassLoader);
+        List<IPluginMapper> mapperPlugins = new ArrayList<>();
+        try {
+            //FIXME ServiceLoader 无法加载接口，需要无参构造方法
+            for (IPluginMapper plugin : mapperLoader) {
+                Class<?> mapperInterface = plugin.getClass().getInterfaces()[0];
+                MapperProxyFactory<?> mapperProxyFactory = new MapperProxyFactory<>(mapperInterface);
+                IPluginMapper mapperProxy = (IPluginMapper) mapperProxyFactory.newInstance(sqlSession);
+                mapperPlugins.add(mapperProxy);
+                System.out.println("加载成功：" + plugin.getClass());
+            }
+        } catch (ServiceConfigurationError error) {
+            error.printStackTrace();
+        }
+        return mapperPlugins;
+    }
 
     /**
      * 加载service插件

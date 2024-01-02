@@ -17,9 +17,12 @@ public class UserController implements IPluginController {
 
     @Resource
     private UserService userService;
+    @Resource
+    private UserMapper userMapper;
 
     @GetMapping("/{id}")
     public UserDto detail(@PathVariable String id) {
+        userMapper.selectById(id);
         return userService.detail(id);
     }
 }
