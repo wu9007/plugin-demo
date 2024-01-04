@@ -1,6 +1,8 @@
 package org.sword.test;
 
 import org.apache.ibatis.binding.MapperProxyFactory;
+import org.apache.ibatis.executor.ErrorContext;
+import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSession;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,6 +24,16 @@ public class TestController {
     @GetMapping
     public UserDo test() {
         MapperProxyFactory<?> mapperProxyFactory = new MapperProxyFactory<>(UserMapper.class);
+        Configuration configuration = sqlSession.getConfiguration();
+        if (!configuration.hasMapper(UserMapper.class)) {
+            try {
+                configuration.addMapper(UserMapper.class);
+            } catch (Exception var6) {
+                throw new IllegalArgumentException(var6);
+            } finally {
+                ErrorContext.instance().reset();
+            }
+        }
         UserMapper userMapper = (UserMapper) mapperProxyFactory.newInstance(sqlSession);
         return userMapper.selectById("1");
     }
