@@ -1,6 +1,5 @@
 package org.sword;
 
-import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.session.SqlSession;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,24 +35,25 @@ public class PluginLoadController {
             return false;
         }
 
+        PluginLoader.PluginInstancePack pluginInstancePack = PluginLoader.loadPluginInstancePack(classLoader, sqlSession);
         //加载mapper插件并注册为bean
-        List<BaseMapper<?>> mapperProxyList = PluginLoader.loadMapperPlugins(classLoader, sqlSession);
-        for (BaseMapper<?> mapperProxy : mapperProxyList) {
+        List<Object> mapperProxyList = pluginInstancePack.getMapperInstanceList();
+        for (Object mapperProxy : mapperProxyList) {
             Class<?> interfaceType = (Class<?>) mapperProxy.getClass().getGenericInterfaces()[0];
             pluginRegistrar.registerPlugin("userMapper", mapperProxy, interfaceType);
         }
 
         //加载service插件并注册为bean
-        List<IPluginService> iPluginServices = PluginLoader.loadServicePlugins(classLoader);
-        for (IPluginService iPluginService : iPluginServices) {
-            Class<?> interfaceType = (Class<?>) iPluginService.getClass().getGenericInterfaces()[0];
-            pluginRegistrar.registerPlugin("userService", iPluginService, interfaceType);
+        List<Object> componentInstanceList = pluginInstancePack.getComponentInstanceList();
+        for (Object componentInstance : componentInstanceList) {
+            Class<?> interfaceType = (Class<?>) componentInstance.getClass().getGenericInterfaces()[0];
+            pluginRegistrar.registerPlugin("userService", componentInstance, interfaceType);
         }
 
         //加载controller插件并注册为bean
-        List<IPluginController> iPluginControllers = PluginLoader.loadControllerPlugins(classLoader);
-        for (IPluginController iPluginController : iPluginControllers) {
-            pluginRegistrar.registerPlugin("userController", iPluginController, iPluginController.getClass());
+        List<Object> controllerInstanceList = pluginInstancePack.getControllerInstanceList();
+        for (Object controller : controllerInstanceList) {
+            pluginRegistrar.registerPlugin("userController", controller, controller.getClass());
             Method method = requestMappingHandlerMapping.getClass().getSuperclass().getSuperclass().getDeclaredMethod("detectHandlerMethods", Object.class);
             method.setAccessible(true);
             method.invoke(requestMappingHandlerMapping, "userController");

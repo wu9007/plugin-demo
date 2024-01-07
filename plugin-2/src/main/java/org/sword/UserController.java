@@ -13,7 +13,7 @@ import javax.annotation.Resource;
  */
 @RestController
 @RequestMapping("/user")
-public class UserController implements IPluginController {
+public class UserController {
 
     @Resource
     private UserService userService;

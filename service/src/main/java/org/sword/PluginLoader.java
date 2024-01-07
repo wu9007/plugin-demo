@@ -5,6 +5,9 @@ import org.apache.ibatis.binding.MapperProxyFactory;
 import org.apache.ibatis.executor.ErrorContext;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSession;
+import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.io.File;
 import java.net.MalformedURLException;
@@ -15,7 +18,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.ServiceConfigurationError;
-import java.util.ServiceLoader;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
@@ -37,14 +39,14 @@ public class PluginLoader {
      * @param urlClassLoader 类加载器
      * @return 插件集合
      */
-    public static List<BaseMapper<?>> loadMapperPlugins(URLClassLoader urlClassLoader, SqlSession sqlSession) {
-        List<Class<?>> mapperClazzList = findBaseMapperInterfaces(urlClassLoader);
-        List<BaseMapper<?>> mapperProxyList = new ArrayList<>();
+    public static PluginInstancePack loadPluginInstancePack(URLClassLoader urlClassLoader, SqlSession sqlSession) {
+        PluginClassPack pluginClassPack = findBaseMapperInterfaces(urlClassLoader);
+        List<Object> mapperInstanceList = new ArrayList<>();
         try {
-            for (Class<?> mapperInterface : mapperClazzList) {
+            for (Class<?> mapperInterface : pluginClassPack.getMapperInterfaceList()) {
                 MapperProxyFactory<?> mapperProxyFactory = new MapperProxyFactory<>(mapperInterface);
                 BaseMapper<?> mapperProxy = (BaseMapper<?>) mapperProxyFactory.newInstance(sqlSession);
-                mapperProxyList.add(mapperProxy);
+                mapperInstanceList.add(mapperProxy);
                 Configuration configuration = sqlSession.getConfiguration();
                 if (!configuration.hasMapper(mapperInterface)) {
                     try {
@@ -55,44 +57,34 @@ public class PluginLoader {
                         ErrorContext.instance().reset();
                     }
                 }
-                System.out.println("加载成功：" + mapperInterface.getName());
+                System.out.println("实例创建成功：" + mapperProxy);
             }
         } catch (ServiceConfigurationError error) {
             error.printStackTrace();
         }
-        return mapperProxyList;
-    }
 
-    /**
-     * 加载service插件
-     *
-     * @param urlClassLoader 类加载器
-     * @return 插件集合
-     */
-    public static List<IPluginService> loadServicePlugins(URLClassLoader urlClassLoader) {
-        ServiceLoader<IPluginService> serviceLoader = ServiceLoader.load(IPluginService.class, urlClassLoader);
-        List<IPluginService> servicePlugins = new ArrayList<>();
-        for (IPluginService plugin : serviceLoader) {
-            servicePlugins.add(plugin);
-            System.out.println("加载成功：" + plugin.getClass());
+        List<Object> componentInstanceList = new ArrayList<>();
+        for (Class<?> componentClazz : pluginClassPack.getComponentClazzList()) {
+            try {
+                Object componentInstance = componentClazz.newInstance();
+                componentInstanceList.add(componentInstance);
+                System.out.println("实例创建成功：" + componentInstance);
+            } catch (InstantiationException | IllegalAccessException e) {
+                throw new RuntimeException(e);
+            }
         }
-        return servicePlugins;
-    }
 
-    /**
-     * 加载controller插件
-     *
-     * @param urlClassLoader 类加载器
-     * @return 插件集合
-     */
-    public static List<IPluginController> loadControllerPlugins(URLClassLoader urlClassLoader) {
-        ServiceLoader<IPluginController> controllerPlugin = ServiceLoader.load(IPluginController.class, urlClassLoader);
-        List<IPluginController> controllerPlugins = new ArrayList<>();
-        for (IPluginController plugin : controllerPlugin) {
-            controllerPlugins.add(plugin);
-            System.out.println("加载成功：" + plugin.getClass());
+        List<Object> controllerInstanceList = new ArrayList<>();
+        for (Class<?> controllerClazz : pluginClassPack.getControllerClazzList()) {
+            try {
+                Object controllerInstance = controllerClazz.newInstance();
+                controllerInstanceList.add(controllerInstance);
+                System.out.println("实例创建成功：" + controllerInstance);
+            } catch (InstantiationException | IllegalAccessException e) {
+                throw new RuntimeException(e);
+            }
         }
-        return controllerPlugins;
+        return new PluginInstancePack(mapperInstanceList, componentInstanceList, controllerInstanceList);
     }
 
     /**
@@ -126,8 +118,10 @@ public class PluginLoader {
      * @param classLoader 类加载器
      * @return 接口
      */
-    private static List<Class<?>> findBaseMapperInterfaces(URLClassLoader classLoader) {
-        List<Class<?>> targetInterfaces = new ArrayList<>();
+    private static PluginClassPack findBaseMapperInterfaces(URLClassLoader classLoader) {
+        List<Class<?>> mapperInterfaceList = new ArrayList<>();
+        List<Class<?>> componentClazzList = new ArrayList<>();
+        List<Class<?>> controllerClazzList = new ArrayList<>();
         try {
             // 获取加载器中的所有URL
             URL[] urls = classLoader.getURLs();
@@ -141,9 +135,14 @@ public class PluginLoader {
                             String className = entry.getName().replace('/', '.').substring(0, entry.getName().length() - 6);
                             // 使用类加载器加载类
                             Class<?> clazz = classLoader.loadClass(className);
+                            System.out.println("加载成功：" + clazz.getName());
                             // 检查是否是接口并且是否继承了BaseMapper
                             if (BaseMapper.class.isAssignableFrom(clazz) && clazz.isInterface()) {
-                                targetInterfaces.add(clazz);
+                                mapperInterfaceList.add(clazz);
+                            } else if (clazz.isAnnotationPresent(Component.class) || clazz.isAnnotationPresent(Service.class)) {
+                                componentClazzList.add(clazz);
+                            } else if (clazz.isAnnotationPresent(RestController.class)) {
+                                controllerClazzList.add(clazz);
                             }
                         }
                     }
@@ -152,6 +151,58 @@ public class PluginLoader {
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return targetInterfaces;
+        return new PluginClassPack(mapperInterfaceList, componentClazzList, controllerClazzList);
+    }
+
+    public static class PluginClassPack {
+        private final List<Class<?>> mapperInterfaceList;
+        private final List<Class<?>> componentClazzList;
+        private final List<Class<?>> controllerClazzList;
+
+        public PluginClassPack(List<Class<?>> mapperInterfaceList,
+                               List<Class<?>> componentClazzList,
+                               List<Class<?>> controllerClazzList) {
+            this.mapperInterfaceList = mapperInterfaceList;
+            this.componentClazzList = componentClazzList;
+            this.controllerClazzList = controllerClazzList;
+        }
+
+        protected List<Class<?>> getMapperInterfaceList() {
+            return mapperInterfaceList;
+        }
+
+        protected List<Class<?>> getComponentClazzList() {
+            return componentClazzList;
+        }
+
+        protected List<Class<?>> getControllerClazzList() {
+            return controllerClazzList;
+        }
+    }
+
+    public static class PluginInstancePack {
+        private final List<Object> mapperInstanceList;
+        private final List<Object> componentInstanceList;
+        private final List<Object> controllerInstanceList;
+
+        public PluginInstancePack(List<Object> mapperInstanceList,
+                                  List<Object> componentInstanceList,
+                                  List<Object> controllerInstanceList) {
+            this.mapperInstanceList = mapperInstanceList;
+            this.componentInstanceList = componentInstanceList;
+            this.controllerInstanceList = controllerInstanceList;
+        }
+
+        protected List<Object> getMapperInstanceList() {
+            return mapperInstanceList;
+        }
+
+        protected List<Object> getComponentInstanceList() {
+            return componentInstanceList;
+        }
+
+        protected List<Object> getControllerInstanceList() {
+            return controllerInstanceList;
+        }
     }
 }
