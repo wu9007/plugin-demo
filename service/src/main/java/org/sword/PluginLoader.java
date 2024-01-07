@@ -7,6 +7,7 @@ import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSession;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.File;
@@ -31,13 +32,11 @@ import java.util.stream.Collectors;
  */
 public class PluginLoader {
 
-    private static final String PLUGIN_PATH = "plugins";
-
     /**
-     * 加载mapper插件
+     * 创建实例（mapper使用proxy特殊处理）
      *
      * @param urlClassLoader 类加载器
-     * @return 插件集合
+     * @return 实例集合
      */
     public static PluginInstancePack loadPluginInstancePack(URLClassLoader urlClassLoader, SqlSession sqlSession) {
         PluginClassPack pluginClassPack = findBaseMapperInterfaces(urlClassLoader);
@@ -92,15 +91,22 @@ public class PluginLoader {
      *
      * @return 类加载器
      */
-    public static URLClassLoader getClassLoader() {
-        File parentDir = new File(PLUGIN_PATH);
+    public static URLClassLoader getClassLoader(String pluginPath, String... jarNames) {
+        if (jarNames.length == 0) {
+            return null;
+        }
+        File parentDir = new File(pluginPath);
         File[] files = parentDir.listFiles();
         if (files == null) {
             return null;
         }
+        List<String> jarNameList = Arrays.stream(jarNames).collect(Collectors.toList());
         List<File> jarFiles = Arrays.stream(files)
-                .filter(file -> file.getName().endsWith(".jar"))
+                .filter(file -> jarNameList.contains(file.getName()))
                 .collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(jarFiles)) {
+            return null;
+        }
         URL[] urls = new URL[jarFiles.size()];
         for (int index = 0; index < urls.length; index++) {
             try {
@@ -113,7 +119,7 @@ public class PluginLoader {
     }
 
     /**
-     * 获取继承了BaseMapper的接口
+     * 加载类
      *
      * @param classLoader 类加载器
      * @return 接口

@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class PluginRegistrar {
 
-    DefaultListableBeanFactory defaultListableBeanFactory;
+    private final DefaultListableBeanFactory defaultListableBeanFactory;
 
     public PluginRegistrar(GenericApplicationContext applicationContext) {
         defaultListableBeanFactory = (DefaultListableBeanFactory) applicationContext.getAutowireCapableBeanFactory();

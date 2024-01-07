@@ -19,6 +19,7 @@ import java.util.List;
 @RequestMapping("/load")
 @RestController
 public class PluginLoadController {
+    private static final String PLUGIN_PATH = "plugins";
 
     @Resource
     private RequestMappingHandlerMapping requestMappingHandlerMapping;
@@ -29,28 +30,28 @@ public class PluginLoadController {
 
     @GetMapping
     public boolean load() throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
-        //必须使用同一个类加载器
-        URLClassLoader classLoader = PluginLoader.getClassLoader();
+        //一组插件必须使用同一个类加载器
+        URLClassLoader classLoader = PluginLoader.getClassLoader(PLUGIN_PATH, "plugin-2-1.0-SNAPSHOT.jar");
         if (classLoader == null) {
             return false;
         }
 
         PluginLoader.PluginInstancePack pluginInstancePack = PluginLoader.loadPluginInstancePack(classLoader, sqlSession);
-        //加载mapper插件并注册为bean
+        //获取mapper插件并注册为bean
         List<Object> mapperProxyList = pluginInstancePack.getMapperInstanceList();
         for (Object mapperProxy : mapperProxyList) {
             Class<?> interfaceType = (Class<?>) mapperProxy.getClass().getGenericInterfaces()[0];
             pluginRegistrar.registerPlugin("userMapper", mapperProxy, interfaceType);
         }
 
-        //加载service插件并注册为bean
+        //获取component插件并注册为bean
         List<Object> componentInstanceList = pluginInstancePack.getComponentInstanceList();
         for (Object componentInstance : componentInstanceList) {
             Class<?> interfaceType = (Class<?>) componentInstance.getClass().getGenericInterfaces()[0];
             pluginRegistrar.registerPlugin("userService", componentInstance, interfaceType);
         }
 
-        //加载controller插件并注册为bean
+        //获取controller插件并注册为bean
         List<Object> controllerInstanceList = pluginInstancePack.getControllerInstanceList();
         for (Object controller : controllerInstanceList) {
             pluginRegistrar.registerPlugin("userController", controller, controller.getClass());
