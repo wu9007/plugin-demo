@@ -9,7 +9,7 @@ import java.io.Serializable;
 public class UserDto implements Serializable {
 
     private String userId;
-    private String username;
+    private String name;
 
     public String getUserId() {
         return userId;
@@ -19,11 +19,11 @@ public class UserDto implements Serializable {
         this.userId = userId;
     }
 
-    public String getUsername() {
-        return username;
+    public String getName() {
+        return name;
     }
 
-    public void setUsername(String username) {
-        this.username = username;
+    public void setName(String username) {
+        this.name = username;
     }
 }

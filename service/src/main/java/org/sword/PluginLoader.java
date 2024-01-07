@@ -1,13 +1,23 @@
 package org.sword;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.binding.MapperProxyFactory;
+import org.apache.ibatis.executor.ErrorContext;
+import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSession;
 
 import java.io.File;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.ServiceConfigurationError;
+import java.util.ServiceLoader;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 
 /**
@@ -27,22 +37,30 @@ public class PluginLoader {
      * @param urlClassLoader 类加载器
      * @return 插件集合
      */
-    public static List<IPluginMapper> loadMapperPlugins(URLClassLoader urlClassLoader, SqlSession  sqlSession) {
-        ServiceLoader<IPluginMapper> mapperLoader = ServiceLoader.load(IPluginMapper.class, urlClassLoader);
-        List<IPluginMapper> mapperPlugins = new ArrayList<>();
+    public static List<BaseMapper<?>> loadMapperPlugins(URLClassLoader urlClassLoader, SqlSession sqlSession) {
+        List<Class<?>> mapperClazzList = findBaseMapperInterfaces(urlClassLoader);
+        List<BaseMapper<?>> mapperProxyList = new ArrayList<>();
         try {
-            //FIXME ServiceLoader 无法加载接口，需要无参构造方法
-            for (IPluginMapper plugin : mapperLoader) {
-                Class<?> mapperInterface = plugin.getClass().getInterfaces()[0];
+            for (Class<?> mapperInterface : mapperClazzList) {
                 MapperProxyFactory<?> mapperProxyFactory = new MapperProxyFactory<>(mapperInterface);
-                IPluginMapper mapperProxy = (IPluginMapper) mapperProxyFactory.newInstance(sqlSession);
-                mapperPlugins.add(mapperProxy);
-                System.out.println("加载成功：" + plugin.getClass());
+                BaseMapper<?> mapperProxy = (BaseMapper<?>) mapperProxyFactory.newInstance(sqlSession);
+                mapperProxyList.add(mapperProxy);
+                Configuration configuration = sqlSession.getConfiguration();
+                if (!configuration.hasMapper(mapperInterface)) {
+                    try {
+                        configuration.addMapper(mapperInterface);
+                    } catch (Exception exception) {
+                        throw new IllegalArgumentException(exception);
+                    } finally {
+                        ErrorContext.instance().reset();
+                    }
+                }
+                System.out.println("加载成功：" + mapperInterface.getName());
             }
         } catch (ServiceConfigurationError error) {
             error.printStackTrace();
         }
-        return mapperPlugins;
+        return mapperProxyList;
     }
 
     /**
@@ -100,5 +118,40 @@ public class PluginLoader {
             }
         }
         return new URLClassLoader(urls);
+    }
+
+    /**
+     * 获取继承了BaseMapper的接口
+     *
+     * @param classLoader 类加载器
+     * @return 接口
+     */
+    private static List<Class<?>> findBaseMapperInterfaces(URLClassLoader classLoader) {
+        List<Class<?>> targetInterfaces = new ArrayList<>();
+        try {
+            // 获取加载器中的所有URL
+            URL[] urls = classLoader.getURLs();
+            for (URL url : urls) {
+                // 获取JAR文件路径
+                String jarFilePath = url.getFile();
+                try (JarFile jarFile = new JarFile(jarFilePath)) {
+                    // 遍历JAR文件中的每个条目
+                    for (JarEntry entry : Collections.list(jarFile.entries())) {
+                        if (entry.getName().endsWith(".class")) {
+                            String className = entry.getName().replace('/', '.').substring(0, entry.getName().length() - 6);
+                            // 使用类加载器加载类
+                            Class<?> clazz = classLoader.loadClass(className);
+                            // 检查是否是接口并且是否继承了BaseMapper
+                            if (BaseMapper.class.isAssignableFrom(clazz) && clazz.isInterface()) {
+                                targetInterfaces.add(clazz);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return targetInterfaces;
     }
 }

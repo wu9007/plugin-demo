@@ -8,7 +8,7 @@ import java.io.Serializable;
 /**
  * @author chuan
  */
-@TableName
+@TableName("t_user")
 public class UserDo implements Serializable {
 
     @TableId

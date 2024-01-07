@@ -1,5 +1,6 @@
 package org.sword;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.session.SqlSession;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,9 +37,10 @@ public class PluginLoadController {
         }
 
         //加载mapper插件并注册为bean
-        List<IPluginMapper> iPluginMappers = PluginLoader.loadMapperPlugins(classLoader, sqlSession);
-        for (IPluginMapper iPluginMapper : iPluginMappers) {
-            pluginRegistrar.registerPlugin("userMapper", iPluginMapper, iPluginMapper.getClass());
+        List<BaseMapper<?>> mapperProxyList = PluginLoader.loadMapperPlugins(classLoader, sqlSession);
+        for (BaseMapper<?> mapperProxy : mapperProxyList) {
+            Class<?> interfaceType = (Class<?>) mapperProxy.getClass().getGenericInterfaces()[0];
+            pluginRegistrar.registerPlugin("userMapper", mapperProxy, interfaceType);
         }
 
         //加载service插件并注册为bean
